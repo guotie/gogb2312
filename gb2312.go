@@ -27,7 +27,8 @@ func ConvertGB2312(input []byte) (output []byte, err error, ic int, oc int) {
 	ilen := len(input)
 	output = make([]byte, (ilen/2)*3+3)
 	olen := 0
-	for i := 0; i < ilen-1; {
+	i := 0
+	for i < ilen-1 {
 		if input[i] <= 0x7f {
 			output[olen] = input[i]
 			olen++
@@ -50,8 +51,62 @@ func ConvertGB2312(input []byte) (output []byte, err error, ic int, oc int) {
 			i = i + 2
 		}
 	}
+
+	// the last character
+	if i == ilen-1 {
+		if byte(input[ilen-1]) <= 0x7f {
+			output[olen] = input[ilen-1]
+			olen++
+			i++
+		}
+	}
+
+	ilen = i
 	output = output[0:olen]
 	return output, nil, ilen, olen
+}
+
+func ConvertGB2312String(input string) (soutput string, err error, ic int, oc int) {
+	ilen := len(input)
+	output := make([]byte, (ilen/2)*3+3)
+	olen := 0
+	i := 0
+	for i < ilen-1 {
+		bi := byte(input[i])
+		if bi <= 0x7f {
+			output[olen] = bi
+			olen++
+			i++
+		} else {
+			bii := byte(input[i+1])
+			gb := int(bi)<<8 | int(bii)
+			u8, ok := gb2312toutf8[gb]
+			if !ok {
+				err = fmt.Errorf("gb2312 has no character %x, at %d\n", gb, ilen)
+				ic = i
+				oc = olen
+				return
+			}
+			output[olen] = byte(u8 >> 16)
+			olen++
+			output[olen] = byte((u8 >> 8) & 0xff)
+			olen++
+			output[olen] = byte(u8 & 0xff)
+			olen++
+			i = i + 2
+		}
+	}
+	if i == ilen-1 {
+		if byte(input[ilen-1]) <= 0x7f {
+			output[olen] = input[ilen-1]
+			olen++
+			i++
+		}
+	}
+
+	output = output[0:olen]
+	soutput = string(output)
+	return soutput, nil, ilen, olen
 }
 
 func unicode2utf8(u int) int {

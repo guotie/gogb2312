@@ -56,20 +56,33 @@ func Test_MakeData(t *testing.T) {
 	//readcp936("./CP936.TXT")
 }
 
-func Test_Convert(t *testing.T) {
-	buf, err := ioutil.ReadFile("./test1.txt")
+func convert_file(t *testing.T, fp string) {
+	buf, err := ioutil.ReadFile("./test/test1.txt")
 	if err != nil {
 		t.Error(err.Error())
 	}
-	hexprint_bytes(buf)
+	//hexprint_bytes(buf)
 	output, cerr, il, ol := ConvertGB2312(buf)
 	if cerr != nil {
 		t.Error(cerr.Error())
 	}
 	_ = il
 	_ = ol
-	hexprint_utf8string("郭铁")
+	_ = output
+}
 
-	hexprint_bytes(output)
-	fmt.Printf("%s\n", output)
+func Test_Convert(t *testing.T) {
+	bn := []byte("\xbf\xc6\xd1\xa7\xC3\xF1\xD6\xF7\xCF\xDC\xD5\xFE")
+	sn := string(bn)
+
+	cbn, err1, _, _ := ConvertGB2312(bn)
+	if err1 != nil {
+		t.Error("convert failed!")
+	}
+	fmt.Printf("%s\n", cbn)
+	csn, err2, _, _ := ConvertGB2312String(sn)
+	if err2 != nil {
+		t.Error("convert failed!")
+	}
+	fmt.Printf("%s\n", csn)
 }
