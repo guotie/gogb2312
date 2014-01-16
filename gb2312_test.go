@@ -24,7 +24,7 @@ func hexprint_bytes(s []byte) {
 	fmt.Println()
 }
 
-func Test_unicode2utf8(t *testing.T) {
+func test_unicode2utf8(t *testing.T) {
 	s := unicode2utf8(0x90ed)
 	hexprint_utf8(s)
 	b := make([]byte, 3)
@@ -34,7 +34,7 @@ func Test_unicode2utf8(t *testing.T) {
 	fmt.Println(string(b))
 }
 
-func Test_RE(t *testing.T) {
+func test_RE(t *testing.T) {
 	var ss = []string{
 		"who  \t are u \t\t  ? ",
 		"i \t \t am\t\t\t   boy.  ",
@@ -71,7 +71,7 @@ func convert_file(t *testing.T, fp string) {
 	_ = output
 }
 
-func Test_Convert(t *testing.T) {
+func test_Convert(t *testing.T) {
 	bn := []byte("\xbf\xc6\xd1\xa7\xC3\xF1\xD6\xF7\xCF\xDC\xD5\xFE")
 	sn := string(bn)
 
@@ -85,4 +85,29 @@ func Test_Convert(t *testing.T) {
 		t.Error("convert failed!")
 	}
 	fmt.Printf("%s\n", csn)
+}
+
+func Test_isutf8(t *testing.T) {
+	bn0 := []byte("\xbf\xc6\xd1\xa7\xC3\xF1\xD6\xF7\xCF\xDC\xD5\xFE")
+	bn1 := []byte("\xbf\xc6\xe2\x80\x94\xd1\xa7\xC3\xF1\xD6\xF7\xCF\xDC\xD5\xFE")
+
+	test_isutf8(bn0)
+	test_isutf8(bn1)
+	ss, err, _, _ := ConvertHybirdString(string(bn1))
+	if err == nil {
+		fmt.Println(ss)
+	} else {
+		t.Error(err.Error())
+	}
+}
+
+func test_isutf8(bs []byte) {
+	tlen := len(bs)
+	for i := 0; i < tlen; i++ {
+		res := isutf8(bs[i:], tlen-i)
+		if res > 0 {
+			fmt.Printf("found utf-8 at %d, length %d. %q\n", i, res, bs[i:])
+		}
+	}
+	fmt.Println()
 }

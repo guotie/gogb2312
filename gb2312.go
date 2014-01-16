@@ -18,6 +18,76 @@ const (
 	UTF8_B3 = 0xe0
 )
 
+func readable(b byte) byte {
+	if b <= 9 {
+		return b + byte('0')
+	}
+	return b - 10 + byte('a')
+}
+
+func tohex(buf []byte) string {
+	if len(buf) == 0 {
+		return "[]"
+	}
+
+	var (
+		i   int
+		b   byte
+		hex []byte = make([]byte, len(buf)*3+2)
+	)
+
+	hex[0] = byte('[')
+	i = 1
+	for _, b = range buf {
+		hex[i] = readable((b & 0xf0) >> 4)
+		i++
+		hex[i] += readable(b & 0x0f)
+		i++
+		hex[i] = byte(' ')
+		i++
+	}
+	// overwrite the space
+	hex[i-1] = ']'
+	hex[i] = ' '
+
+	return string(hex)
+}
+
+func nearbygbk(buf []byte, tlen int, plen int) string {
+	return tohex(buf[tlen-plen : tlen])
+}
+
+func nearbygbks(buf string, tlen int, plen int) string {
+	if tlen <= plen {
+		return tohex([]byte(buf[0:tlen]))
+	}
+	return tohex([]byte(buf[tlen-plen : tlen]))
+}
+
+// get a slice of utf-8 string, from tlen-plen, to tlen
+func nearbyutf8(buf []byte, tlen int, plen int) string {
+	if tlen <= plen {
+		return tohex(buf) + string(buf)
+	}
+
+	start := tlen - plen
+	if buf[start] < byte(0x7f) || buf[start] > byte(0xe0) {
+		return tohex(buf[start:]) + string(buf[start:])
+	}
+	start = start - 1
+	if buf[start] < byte(0x7f) || buf[start] > byte(0xe0) {
+		return tohex(buf[start:]) + string(buf[start:])
+	}
+	if start < 1 {
+		return ""
+	}
+	start = start - 1
+	if buf[start] < byte(0x7f) || buf[start] > byte(0xe0) {
+		return tohex(buf[start:]) + string(buf[start:])
+	}
+	return ""
+}
+
 // param: input: input bytes array
 // return: output: output bytes array
 //         err: error if there are errors when convert
@@ -37,7 +107,9 @@ func ConvertGB2312(input []byte) (output []byte, err error, ic int, oc int) {
 			gb := int(input[i])<<8 | int(input[i+1])
 			u8, ok := gb2312toutf8[gb]
 			if !ok {
-				err = fmt.Errorf("gb2312 has no character %x, at %d\n", gb, ilen)
+				err = fmt.Errorf("gb2312 has no character %x, at %d.\nnearby input: %s\nnearby output: %s",
+					gb, ilen, nearbygbk(input[0:i], i, 20),
+					nearbyutf8(output[0:olen], olen, 30))
 				ic = i
 				oc = olen
 				return
@@ -82,7 +154,9 @@ func ConvertGB2312String(input string) (soutput string, err error, ic int, oc in
 			gb := int(bi)<<8 | int(bii)
 			u8, ok := gb2312toutf8[gb]
 			if !ok {
-				err = fmt.Errorf("gb2312 has no character %x, at %d\n", gb, ilen)
+				err = fmt.Errorf("gb2312 has no character %x, at %d\nnearby input: %s\nnearby output: %s",
+					gb, ilen, nearbygbks(input[0:i], i, 20),
+					nearbyutf8(output[0:olen], olen, 30))
 				ic = i
 				oc = olen
 				return
@@ -94,6 +168,157 @@ func ConvertGB2312String(input string) (soutput string, err error, ic int, oc in
 			output[olen] = byte(u8 & 0xff)
 			olen++
 			i = i + 2
+		}
+	}
+	if i == ilen-1 {
+		if byte(input[ilen-1]) <= 0x7f {
+			output[olen] = input[ilen-1]
+			olen++
+			i++
+		}
+	}
+
+	output = output[0:olen]
+	soutput = string(output)
+	return soutput, nil, ilen, olen
+}
+
+/*
+Unicode和UTF-8之间的转换关系表
+UCS-4编码	UTF-8字节流
+U+00000000 – U+0000007F	0xxxxxxx
+U+00000080 – U+000007FF	110xxxxx 10xxxxxx
+U+00000800 – U+0000FFFF	1110xxxx 10xxxxxx 10xxxxxx
+U+00010000 – U+001FFFFF	11110xxx 10xxxxxx 10xxxxxx 10xxxxxx
+U+00200000 – U+03FFFFFF	111110xx 10xxxxxx 10xxxxxx 10xxxxxx 10xxxxxx
+U+04000000 – U+7FFFFFFF	1111110x 10xxxxxx 10xxxxxx 10xxxxxx 10xxxxxx 10xxxxxx
+*/
+var (
+	utf8FirstByte = []byte{0, 0, byte(0xc0), byte(0xe0), byte(0xf0), byte(0xf8), byte(0xfc)}
+	utf8FirstMask = []byte{0, 0, byte(0xe0), byte(0xf0), byte(0xf8), byte(0xfc), byte(0xfe)}
+)
+
+// check if the first N byte of buf is utf-8
+func isutf8(buf []byte, blen int) int {
+	if blen <= 2 {
+		return 0
+	}
+	// invalid utf-8 code
+	if buf[0] == byte(0xc0) || buf[0] == byte(0xc1) ||
+		buf[0] == byte(0xfe) || buf[0] == byte(0xff) {
+		return 0
+	}
+
+	var (
+		i      int = 3
+		maxlen int = 6
+	)
+	if blen < 6 {
+		maxlen = blen
+	}
+	for ; i < maxlen; i++ {
+		fb := utf8FirstByte[i]
+		mk := utf8FirstMask[i]
+		if buf[0]&mk == fb {
+			res := true
+			for j := 1; j <= i-1; j++ {
+				b := buf[j]
+				if b == byte(0xc0) || b == byte(0xc1) ||
+					b == byte(0xfe) || b == byte(0xff) {
+					return 0
+				}
+				if b&byte(0xc0) != 0x80 {
+					res = false
+					break
+				}
+			}
+			if res {
+				return i
+			}
+		}
+	}
+	return 0
+}
+func isutf8s(buf string, blen int) int {
+	if blen <= 2 {
+		return 0
+	}
+	// invalid utf-8 code
+	if buf[0] == byte(0xc0) || buf[0] == byte(0xc1) ||
+		buf[0] == byte(0xfe) || buf[0] == byte(0xff) {
+		return 0
+	}
+
+	var (
+		i      int = 3
+		maxlen int = 6
+	)
+	if blen < 6 {
+		maxlen = blen
+	}
+	for ; i < maxlen; i++ {
+		fb := utf8FirstByte[i]
+		mk := utf8FirstMask[i]
+		if buf[0]&mk == fb {
+			res := true
+			for j := 1; j <= i-1; j++ {
+				b := buf[j]
+				if b == byte(0xc0) || b == byte(0xc1) ||
+					b == byte(0xfe) || b == byte(0xff) {
+					return 0
+				}
+				if b&byte(0xc0) != 0x80 {
+					res = false
+					break
+				}
+			}
+			if res {
+				return i
+			}
+		}
+	}
+	return 0
+}
+
+func ConvertHybirdString(input string) (soutput string, err error, ic int, oc int) {
+	ilen := len(input)
+	output := make([]byte, (ilen/2)*3+3)
+	olen := 0
+	i := 0
+	for i < ilen-1 {
+		bi := byte(input[i])
+		if bi <= 0x7f {
+			output[olen] = bi
+			olen++
+			i++
+		} else {
+			utf8 := isutf8s(input[i:], ilen-i)
+			if utf8 == 0 {
+				bii := byte(input[i+1])
+				gb := int(bi)<<8 | int(bii)
+				u8, ok := gb2312toutf8[gb]
+				if !ok {
+					err = fmt.Errorf("ConvertHybirdString: gb2312 has no character %x, at %d\nnearby input: %s\nnearby output: %s",
+						gb, ilen, nearbygbks(input[0:i], i, 20),
+						nearbyutf8(output[0:olen], olen, 30))
+					ic = i
+					oc = olen
+					return
+				}
+				output[olen] = byte(u8 >> 16)
+				olen++
+				output[olen] = byte((u8 >> 8) & 0xff)
+				olen++
+				output[olen] = byte(u8 & 0xff)
+				olen++
+				i = i + 2
+			} else {
+				for ul := 0; ul < utf8; ul++ {
+					output[olen] = input[i]
+					olen++
+					i++
+				}
+			}
 		}
 	}
 	if i == ilen-1 {
