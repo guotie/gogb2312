@@ -114,12 +114,19 @@ func ConvertGB2312(input []byte) (output []byte, err error, ic int, oc int) {
 				oc = olen
 				return
 			}
-			output[olen] = byte(u8 >> 16)
-			olen++
-			output[olen] = byte((u8 >> 8) & 0xff)
-			olen++
-			output[olen] = byte(u8 & 0xff)
-			olen++
+			if u8 >= 0x10000 {
+				output[olen] = byte(u8 >> 16)
+				olen++
+				output[olen] = byte((u8 >> 8) & 0xff)
+				olen++
+				output[olen] = byte(u8 & 0xff)
+				olen++
+			} else {
+				output[olen] = byte(u8 >> 8)
+				olen++
+				output[olen] = byte(u8 & 0xff)
+				olen++
+			}
 			i = i + 2
 		}
 	}
@@ -161,12 +168,19 @@ func ConvertGB2312String(input string) (soutput string, err error, ic int, oc in
 				oc = olen
 				return
 			}
-			output[olen] = byte(u8 >> 16)
-			olen++
-			output[olen] = byte((u8 >> 8) & 0xff)
-			olen++
-			output[olen] = byte(u8 & 0xff)
-			olen++
+			if u8 >= 0x10000 {
+				output[olen] = byte(u8 >> 16)
+				olen++
+				output[olen] = byte((u8 >> 8) & 0xff)
+				olen++
+				output[olen] = byte(u8 & 0xff)
+				olen++
+			} else {
+				output[olen] = byte(u8 >> 8)
+				olen++
+				output[olen] = byte(u8 & 0xff)
+				olen++
+			}
 			i = i + 2
 		}
 	}
@@ -334,19 +348,48 @@ func ConvertHybirdString(input string) (soutput string, err error, ic int, oc in
 	return soutput, nil, ilen, olen
 }
 
+const (
+	UTF8_B7FF     = 0xc0
+	UTF8_1FFFFF   = 0xf0
+	UTF8_3FFFFFF  = 0xf8
+	UTF8_7FFFFFFF = 0xfc
+)
+
+/*
+Unicode和UTF-8之间的转换关系表
+UCS-4编码	UTF-8字节流
+U+00000000 – U+0000007F	0xxxxxxx
+U+00000080 – U+000007FF	110xxxxx 10xxxxxx
+U+00000800 – U+0000FFFF	1110xxxx 10xxxxxx 10xxxxxx
+U+00010000 – U+001FFFFF	11110xxx 10xxxxxx 10xxxxxx 10xxxxxx
+U+00200000 – U+03FFFFFF	111110xx 10xxxxxx 10xxxxxx 10xxxxxx 10xxxxxx
+U+04000000 – U+7FFFFFFF	1111110x 10xxxxxx 10xxxxxx 10xxxxxx 10xxxxxx 10xxxxxx
+*/
 func unicode2utf8(u int) int {
-	if u > 0x10000 {
-		panic(fmt.Sprintf("unicode for gb2312 is invalid: 0x%x\n", u))
-	}
 	if u < 0x7f {
 		return u
 	}
-
-	b1 := (u & 0x3f) | UTF8_B1
-	b2 := ((u >> 6) & 0x3f) | UTF8_B2
-	b3 := (u >> 12) | UTF8_B3
-
-	u8 := b1 | (b2 << 8) | (b3 << 16)
+	var u8 int
+	if u >= 0x80 && u <= 0x7ff {
+		b1 := (u & 0x3f) | UTF8_B1
+		b2 := ((u >> 6) & 0x1f) | UTF8_B7FF
+		u8 = b1 | (b2 << 8)
+	} else if u >= 0x800 && u <= 0xffff {
+		b1 := (u & 0x3f) | UTF8_B1
+		b2 := ((u >> 6) & 0x3f) | UTF8_B2
+		b3 := (u >> 12) | UTF8_B3
+		u8 = b1 | (b2 << 8) | (b3 << 16)
+	} else if u >= 0x10000 && u <= 0x1FFFFF {
+		b1 := (u & 0x3f) | UTF8_B1
+		b2 := ((u >> 6) & 0x3f) | UTF8_B1
+		b3 := ((u >> 12) & 0x3f) | UTF8_B1
+		b4 := ((u >> 18) & 0x7) | UTF8_1FFFFF
+		u8 = b1 | (b2 << 8) | (b3 << 16) | (b4 << 24)
+	} else if u >= 0x200000 && u <= 0x3FFFFFF {
+		return 0
+	} else if u >= 04000000 && u <= 0x7FFFFFFF {
+		return 0
+	}
 
 	return u8
 }

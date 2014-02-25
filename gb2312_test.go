@@ -3,6 +3,8 @@ package gogb2312
 import (
 	"fmt"
 	"io/ioutil"
+	"net/http"
+	"os"
 	"testing"
 )
 
@@ -87,7 +89,7 @@ func test_Convert(t *testing.T) {
 	fmt.Printf("%s\n", csn)
 }
 
-func Test_isutf8(t *testing.T) {
+func _Test_isutf8(t *testing.T) {
 	bn0 := []byte("\xbf\xc6\xd1\xa7\xC3\xF1\xD6\xF7\xCF\xDC\xD5\xFE")
 	bn1 := []byte("\xbf\xc6\xe2\x80\x94\xd1\xa7\xC3\xF1\xD6\xF7\xCF\xDC\xD5\xFE")
 
@@ -110,4 +112,37 @@ func test_isutf8(bs []byte) {
 		}
 	}
 	fmt.Println()
+}
+
+func saveToFile(buf []byte) {
+	err := ioutil.WriteFile("d:\\f1.txt", buf, os.ModePerm)
+	if err != nil {
+		panic(err.Error())
+	}
+	obuf, err, _, _ := ConvertGB2312(buf)
+	if err != nil {
+		panic(err.Error())
+	}
+	err = ioutil.WriteFile("d:\\f2.txt", obuf, os.ModePerm)
+	if err != nil {
+		panic(err.Error())
+	}
+}
+
+// 两个问题：
+// 英文名字中间的点convert不正确，温度上标convert不正确
+// 有些页面整体convert错误，例如：http://sports.sina.com.cn/n/2014-02-24/04137038088.shtml
+//                           该页面是由于其本身进行了混淆处理。
+func TestUrl(t *testing.T) {
+	resp, err := http.Get("http://ent.sina.com.cn/zl/bagua/blog/2014-02-25/15341218/2036655340/7964e4ec0101sigp.shtml")
+	if err != nil {
+		t.Fatal("get page failed!\n")
+	}
+	defer resp.Body.Close()
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal("read response failed!\n")
+	}
+
+	saveToFile(body)
 }
