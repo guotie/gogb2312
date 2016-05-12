@@ -54,6 +54,9 @@ func tohex(buf []byte) string {
 }
 
 func nearbygbk(buf []byte, tlen int, plen int) string {
+	if tlen <= plen {
+		return tohex(buf[0:tlen])
+	}
 	return tohex(buf[tlen-plen : tlen])
 }
 
