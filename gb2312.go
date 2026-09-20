@@ -53,6 +53,12 @@ func tohex(buf []byte) string {
 	return string(hex)
 }
 
+// middleDotUTF8 is the UTF-8 byte sequence of the middle dot (U+00B7, "\xc2\xb7").
+// In GB2312 the middle dot used in Chinese names is stored as a single byte 0xA1,
+// while the code points it stands for (U+00B7, U+2027, U+30FB) are all 2-byte
+// UTF-8 sequences that always begin with the leading byte 0xC2.
+const middleDotUTF8 = 0xC2B7
+
 func nearbygbk(buf []byte, tlen int, plen int) string {
 	if tlen <= plen {
 		return tohex(buf[0:tlen])
@@ -125,6 +131,17 @@ func ConvertGB2312(input []byte) (output []byte, err error, ic int, oc int) {
 				output[olen] = byte(u8 & 0xff)
 				olen++
 			} else {
+				// The GB2312 middle dot is a single byte (0xA1) that is not a
+				// valid 2-byte GB2312 sequence, so the map lookup above fails.
+				// Map it to the UTF-8 encoding of "\u00b7" ("\xc2\xb7").
+				if input[i] == 0xA1 {
+					output[olen] = byte(middleDotUTF8 >> 8)
+					olen++
+					output[olen] = byte(middleDotUTF8 & 0xff)
+					olen++
+					i++
+					continue
+				}
 				output[olen] = byte(u8 >> 8)
 				olen++
 				output[olen] = byte(u8 & 0xff)
